@@ -1,0 +1,313 @@
+---
+title: "Thesis"
+author: "Sietse"
+date: "2022"
+output: pdf_document
+---
+
+#1 Preparation
+
+# Load packages 
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(lubridate)
+library(zoo)
+library(data.table)
+library(tidyr)
+library(padr)
+library(vars)
+library(pander)
+library(ggpubr)
+library(gtrendsR)
+library(tidyverse)
+```
+
+# Load the data
+LOAD THE MT GOX DATA
+```{r}
+DataMtGox <-  read.csv("complete_edge_v2.csv")
+``` 
+
+Filter rows such that trader id both sides is the same
+```{r}
+NumericSource <- as.numeric(DataMtGox$Source)
+NumericTarget <- as.numeric((DataMtGox$Target))
+NumericMtGox <- cbind(DataMtGox, NumericSource, NumericTarget)
+Duplicatedata <- DataMtGox %>% filter(Source == Target, na.rm=TRUE)
+```
+
+Check whether there are NAs
+```{r}
+OmitNA <- na.omit(NumericMtGox)
+OmitDuplicate <- OmitNA %>% filter(NumericSource == NumericTarget, na.rm=TRUE)
+``` 
+Apparently not.
+
+
+The dates equal to Aloosh and Li now (June 26th 2011 to May 20th 2013!)
+
+How many different trader id's? (2882)
+
+```{r}
+n_distinct(Duplicatedata$Target)
+``` 
+How many id's in total dataset. (Time is not set correctly, but if filtered it would approximate) (106595)
+
+```{r}
+n_distinct(DataMtGox$Target)
+``` 
+
+Visualizing wash trading volume over time
+
+HOW TO AGGREGATE DAILY WASH TRADING VOLUMES
+```{r}
+Duplicatedata$Date2 <- as.Date(Duplicatedata$Date)
+Aggregate <-aggregate(Bitcoins~Date2, data=Duplicatedata, FUN=sum)
+``` 
+
+HOW TO FILL UP THE DATASET
+```{r}
+Aggregate2 <- pad(Aggregate) 
+``` 
+
+REPLACE NA WITH 0
+```{r}
+Aggregate2[is.na(Aggregate2)] <- 0
+``` 
+
+VISUALIZE BITCOINS OVER DATE
+```{r}
+ggplot(Aggregate2,aes(x=Date2, y=Bitcoins))+geom_line()
+``` 
+
+
+
+
+
+
+
+--- ATTEMPT TO FIND MARKUS AND WILLY
+MARKUS BOT:
+```{r}
+MarkusBOT <- DataMtGox %>% filter(Target == "634"|Source == "634")
+SUSdata <- DataMtGox %>% filter(Target == "488195"|Source == "488195" )
+
+Top500<- DataMtGox %>% 
+  group_by(Source) %>% 
+  summarise(Money = sum(Money))
+Top500$ID <- Top500$Source
+Top500clean <- subset(Top500, select = c(ID,Money))
+
+
+
+TopT500 <-DataMtGox %>% 
+  group_by(Target) %>% 
+  summarise(Money = sum(Money))
+TopT500$ID <- TopT500$Target
+TopT500clean <- subset(TopT500, select = c(ID,Money))
+
+
+TheTop500 <- bind_rows(Top500clean, TopT500clean) %>% group_by(ID) %>% summarise_each(funs(sum(.,na.rm=TRUE)))
+``` 
+
+1 = THK
+2 = 231
+3 = 144834
+4 = 287361
+5 = 
+6 =
+7 =
+8 =
+9 =
+10 =
+11 =
+12 =
+13 =
+14 =
+15 =
+
+
+
+
+
+
+
+
+REGRESSION CONSTRUCTION:
+Washtrade = a + Price volatility + Transaction costs + Google trends + HHI 
+Missing: Feeincome, website traffic, market sentiment index, market performance index, volatility index(although largely captured by price volatility Bitcoin price)
+
+Data from 26 June 2011 to 20 May 2013
+
+Bitcoin price volatility
+```{r}
+Datapricechange <- read.csv("./BitcoinpriceInvesting.com.csv")
+colnames(Datapricechange)[1] <- gsub('^...','',colnames(Datapricechange)[1])
+Datapricechange$Date <- as.Date(Datapricechange$Date, "%b %d,%Y")
+Priceslice <- Datapricechange %>% slice(87:781,)
+names(Priceslice)[names(Priceslice) == "Change.."] <- "Change"
+Priceslice$pricechange <- as.numeric(sub("%","",Priceslice$Change))/100
+Priceslice$abspricechange <- abs(Priceslice$pricechange)
+```
+
+
+
+TRANSACTION FEES
+```{r}
+Amounttransactions<- read.csv("BCHAIN-Number transactions confirmed.csv")
+Totaltransactionfee<- read.csv("BCHAIN-total transaction fee.csv")
+
+Amountslice <- Amounttransactions %>% slice(3259:3953)
+Amountslice$Date2 <- as.Date(Amountslice$Date)
+ggplot(Amountslice,aes(x=Date2, y= Value)) + geom_line()
+
+Totaltransslice <- Totaltransactionfee %>% slice(3259:3953)
+Totaltransslice$Date2 <- as.Date(Totaltransslice$Date)
+ggplot(Totaltransslice,aes(x=Date2, y= Value)) + geom_line()
+
+Totaltransslice$AverageTransfee <- (Totaltransslice$Value)/(Amountslice$Value)
+```
+
+
+GOOGLE TRENDS
+```{r}
+DailyBitcoinTrend <- read.csv("DailyBitcoinTrend.csv")
+DBitcoinTrendDataslice <- DailyBitcoinTrend %>% slice(1:695) 
+```
+
+
+HHI index
+```{r}
+DataHHI <-  read.csv("BitcoinHHIdata.csv")
+HHIslice <- DataHHI %>% slice(345:1039)
+HHIslice[is.na(HHIslice)] <- 0
+HHIslice$marketshare <- (HHIslice$mtgox)/(HHIslice$bitfinex+HHIslice$bitstamp+HHIslice$btcchina+HHIslice$coinbase+HHIslice$huobi+HHIslice$kraken+HHIslice$lakebtc+HHIslice$okcoin+HHIslice$others+HHIslice$mtgox)
+HHIslice$Date <- as.Date(HHIslice$Time)
+
+ggplot(HHIslice,aes(x=Date, y=marketshare))+geom_line()
+```  
+
+Market performance proxy 
+There is no market performance proxy. Bitcoin price could be an alternative
+```{r}
+Priceslice$Pricenumerical <- as.numeric(Priceslice$Price)
+```
+
+REGRESSION TIME:
+Washtrade = a + Price change + Transaction costs + MarketSentiment + HHI + Marketperformance(BTC)
+
+Missing: Missing: Feeincome, website traffic, market sentiment index, market performance index, volatility index (although largely captured by price volatility Bitcoin price)
+
+BIG TIME FRAME OF 695 OBSERVATIONS
+
+abspricechange
+Totaltransslice$AverageTransfee
+DailyBitcoinTrendData (DailyGoxTrendData)
+HHIslice$marketshare
+Priceslice$Price
+
+```{r}
+GOXDF <- Aggregate2
+names(GOXDF)[names(GOXDF) == "Bitcoins"] <- "Wash_Trading_Volume"
+names(GOXDF)[names(GOXDF) == "Date2"] <- "Date"
+GOXDF$BTCpricevolatility <- Priceslice$abspricechange
+GOXDF$AverageTransfee <- Totaltransslice$AverageTransfee
+GOXDF$GoogleTrendPopularity <- DBitcoinTrendDataslice$est_hits
+GOXDF$HHI <- HHIslice$marketshare
+GOXDF$BTCPriceperformance <- Priceslice$Pricenumerical
+```
+
+
+```{r}
+Reg1 <- lm(GOXDF$Wash_Trading_Volume~GOXDF$BTCpricevolatility+GOXDF$AverageTransfee+GOXDF$GoogleTrendPopularity+GOXDF$HHI+GOXDF$BTCPriceperformance)
+
+summary(Reg1)
+``` 
+We find BTC price volatility significant. All other explanatory variables not.
+
+
+
+
+
+Correlation tests:
+Correlation test significant explanatory variable BTCpricevolatility to the 5 other explanatory variables 
+```{r}
+cor.test(GOXDF$BTCpricevolatility, GOXDF$AverageTransfee , method=c("pearson"))
+```
+No correlation 
+
+```{r}
+cor.test(GOXDF$BTCpricevolatility, GOXDF$GoogleTrendPopularity , method=c("pearson"))
+```
+Some correlation between BTC price volatility and Google trend popularity of "Bitcoin"
+
+```{r}
+cor.test(GOXDF$BTCpricevolatility, GOXDF$HHI , method=c("pearson"))
+```
+slight negative correlation. More market concentration means lower price volatility
+
+```{r}
+cor.test(GOXDF$BTCpricevolatility, GOXDF$BTCPriceperformance , method=c("pearson"))
+```
+Some statistically significant positive correlation between Bitcoin price volatility and Bitcoin price (which are ofcourse connected to eachother so this finding is intuitive)
+
+```{r}
+cor.test(GOXDF$BTCpricevolatility, GOXDF$volatilityindexexternal , method=c("pearson"))
+```
+Slight positive correlation between Bitcoin price volatility and the external volatility index, denoting the index of the stock market.
+
+
+Now we test correlation for the other explanatory variables 
+```{r}
+cor.test(GOXDF$AverageTransfee , GOXDF$GoogleTrendPopularity , method=c("pearson"))
+```
+No correlation
+
+
+```{r}
+cor.test(GOXDF$AverageTransfee, GOXDF$HHI , method=c("pearson"))
+```
+No correlation 
+
+```{r}
+cor.test(GOXDF$AverageTransfee, GOXDF$BTCPriceperformance , method=c("pearson"))
+```
+No correlation
+
+```{r}
+cor.test(GOXDF$AverageTransfee, GOXDF$volatilityindexexternal , method=c("pearson"))
+```
+No correlation
+
+```{r}
+cor.test(GOXDF$GoogleTrendPopularity, GOXDF$HHI , method=c("pearson"))
+```
+very slight negative correlation, but statistically significant
+
+```{r}
+cor.test(GOXDF$GoogleTrendPopularity, GOXDF$BTCPriceperformance , method=c("pearson"))
+```
+Strong correlation between Google search intensity and Bitcoin price
+
+```{r}
+cor.test(GOXDF$GoogleTrendPopularity, GOXDF$volatilityindexexternal , method=c("pearson"))
+```
+Statistically significant negative correlation between Google trend popularity of "Bitcoin" and the volatility index of the stock market
+
+```{r}
+cor.test(GOXDF$HHI, GOXDF$BTCPriceperformance , method=c("pearson"))
+```
+No correlation
+
+```{r}
+cor.test(GOXDF$HHI, GOXDF$volatilityindexexternal , method=c("pearson"))
+```
+Statistically significant negative correlation between the market concentration of the crypto exchange market and the volatility of the stock market. 
+```{r}
+cor.test(GOXDF$BTCPriceperformance, GOXDF$volatilityindexexternal , method=c("pearson"))
+```
+Statistically significant correlation between Bitcoin price and the volatility of the stock market.
+
+  
